@@ -20,21 +20,23 @@ class CPU:
         self.alu_instruction = ""
         self.dest_instruction = ""
         self.jump_instruction = ""
+        self.assembler_string = ""
 
 
     def tick(self):
         # fetch instruction from the ROM
-        instruction = self.ROM.mem[self.ROM.idx]
+        self.current_instruction = instruction = self.ROM.mem[self.ROM.idx]
+
         self.instruction_str = str(instruction)
         # A or C instruction ?
-        is_c_instruction = np.bitwise_and(instruction, 0x8000)
+        is_c_instruction = np.bitwise_and(instruction, 0xE000)
 
         if is_c_instruction:
             self.instruction_type = "C"
 
             # 1) ALU
             a = np.bitwise_and(instruction, 0x1000)
-            alu_instruction  = np.bitwise_and(instruction, 0x0FC0)
+            alu_instruction = np.bitwise_and(instruction, 0x0FC0)
             alu_instruction = np.right_shift(alu_instruction, 6)
             result_ALU = 0  # default value
             if a:
@@ -71,10 +73,82 @@ class CPU:
                 elif alu_instruction == 55:      #110111 -> A + 1
                     self.alu_instruction = "A+1"
                     result_ALU = self.A_reg[0] + 1
+                elif alu_instruction == 14:  # 001110 -> D - 1
+                    self.alu_instruction = "D-1"
+                    result_ALU = self.D_reg[0] - 1
+                elif alu_instruction == 50:      #110010 -> A-1
+                    self.alu_instruction = "A-1"
+                    result_ALU = self.A_reg[0] - 1
+                elif alu_instruction == 2:      #000010 -> D+A
+                    self.alu_instruction = "D+A"
+                    result_ALU = self.A_reg[0] + self.D_reg[0]
+                elif alu_instruction == 19:      #010011 -> D-A
+                    self.alu_instruction = "D-A"
+                    result_ALU = self.D_reg[0] - self.A_reg[0]
+                elif alu_instruction == 7:      #000111 -> A-D
+                    self.alu_instruction = "A-D"
+                    result_ALU = self.A_reg[0] - self.D_reg[0]
+                elif alu_instruction == 0:      #000000 -> D&A
+                    self.alu_instruction = "D&A"
+                    result_ALU = self.D_reg[0] & self.A_reg[0]
+                elif alu_instruction == 21:      #010101 -> D|A
+                    self.alu_instruction = "D|A"
+                    result_ALU = self.D_reg[0] | self.A_reg[0]
             else:   # a = 0
-                pass
-
-            #TODO others instruction
+                if alu_instruction == 42:        #101010 -> 0
+                    self.alu_instruction = "0"
+                    result_ALU = 0
+                elif alu_instruction == 63:      #111111 -> 1
+                    self.alu_instruction = "1"
+                    result_ALU = 1
+                elif alu_instruction == 58:      #111010 -> -1
+                    self.alu_instruction = "-1"
+                    result_ALU = -1
+                elif alu_instruction == 12:      #001100 -> D
+                    self.alu_instruction = "D"
+                    result_ALU = self.D_reg[0]
+                elif alu_instruction == 48:      #110000 -> A
+                    self.alu_instruction = "M"
+                    result_ALU = self.RAM.mem[self.A_reg[0]]
+                elif alu_instruction == 13:      #001101 -> !D
+                    self.alu_instruction = "!D"
+                    result_ALU = np.invert(self.D_reg[0])
+                elif alu_instruction == 49:      #110001 -> !A
+                    self.alu_instruction = "!M"
+                    result_ALU = np.invert(self.RAM.mem[self.A_reg[0]])
+                elif alu_instruction == 15:      #001111 -> -D
+                    self.alu_instruction = "-D"
+                    result_ALU = - self.D_reg[0]
+                elif alu_instruction == 51:      #110011 -> -A
+                    self.alu_instruction = "-M"
+                    result_ALU = - self.RAM.mem[self.A_reg[0]]
+                elif alu_instruction == 31:      #011111 -> D + 1
+                    self.alu_instruction = "D+1"
+                    result_ALU = self.D_reg[0] + 1
+                elif alu_instruction == 55:      #110111 -> A + 1
+                    self.alu_instruction = "M+1"
+                    result_ALU = self.RAM.mem[self.A_reg[0]] + 1
+                elif alu_instruction == 14:  # 001110 -> D - 1
+                    self.alu_instruction = "D-1"
+                    result_ALU = self.D_reg[0] - 1
+                elif alu_instruction == 50:      #110010 -> A-1
+                    self.alu_instruction = "M-1"
+                    result_ALU = self.RAM.mem[self.A_reg[0]] - 1
+                elif alu_instruction == 2:      #000010 -> D+A
+                    self.alu_instruction = "D+M"
+                    result_ALU = self.RAM.mem[self.A_reg[0]] + self.D_reg[0]
+                elif alu_instruction == 19:      #010011 -> D-A
+                    self.alu_instruction = "D-M"
+                    result_ALU = self.D_reg[0] - self.RAM.mem[self.A_reg[0]]
+                elif alu_instruction == 7:      #000111 -> A-D
+                    self.alu_instruction = "M-D"
+                    result_ALU = self.RAM.mem[self.A_reg[0]] - self.D_reg[0]
+                elif alu_instruction == 0:      #000000 -> D&A
+                    self.alu_instruction = "D&M"
+                    result_ALU = self.D_reg[0] & self.RAM.mem[self.A_reg[0]]
+                elif alu_instruction == 21:      #010101 -> D|A
+                    self.alu_instruction = "D|M"
+                    result_ALU = self.D_reg[0] | self.RAM.mem[self.A_reg[0]]
 
             # 2) Destination
             dest = np.bitwise_and(instruction, 0x0038)
@@ -144,27 +218,224 @@ class CPU:
                 self.ROM.idx += 1
 
         else:
-            self.CPU.instruction_type = "A"
+            self.instruction_type = "A"
             # A instruction, write in A register
             self.A_reg[0] = instruction
             # no jump to consider
             self.ROM.idx += 1
+            self.assembler_string = hex(instruction)[2:] + " -> A"
 
 
         if self.num_instruction % self.refresh_rate == 0:
             # PPU display image
             pass
 
-        time.sleep(self.wait_time_ms)
+        # time.sleep(self.wait_time_ms)
+
+        #TODO log
 
         if self.is_print_state:
             self.print_state()
+
+    def go_to_instruction_n(self, n):
+        """
+        We recompute all the instruction to the nb n
+        :param n:
+        :return:
+        """
+        self.CPU.ROM.idx = 0
+        #TODO test infinite loop et faire cela dans un thread séparé que l'on peut tuer.
+        while self.ROM.idx != n:
+            self.CPU.tick()
+
+
+    def get_instruction_type(self, instruction):
+        if np.bitwise_and(instruction, 0xE000) :
+            return 'C'
+        else:
+            return 'A'
+
+    def get_ALU_operation_type(self, instruction):
+        if(self.get_instruction_type(instruction) == "A"):
+            return "NA"
+        a = np.bitwise_and(instruction, 0x1000)
+        alu_instruction = np.bitwise_and(instruction, 0x0FC0)
+        alu_instruction = np.right_shift(alu_instruction, 6)
+
+        if a:
+            if alu_instruction == 42:  # 101010 -> 0
+                return "0"
+            elif alu_instruction == 63:  # 111111 -> 1
+                return "1"
+            elif alu_instruction == 58:  # 111010 -> -1
+                return "-1"
+            elif alu_instruction == 12:  # 001100 -> D
+                return "D"
+            elif alu_instruction == 48:  # 110000 -> A
+                return "A"
+            elif alu_instruction == 13:  # 001101 -> !D
+                return "!D"
+            elif alu_instruction == 49:  # 110001 -> !A
+                return "!A"
+            elif alu_instruction == 15:  # 001111 -> -D
+                return "-D"
+            elif alu_instruction == 51:  # 110011 -> -A
+                return "-A"
+            elif alu_instruction == 31:  # 011111 -> D + 1
+                return "D+1"
+            elif alu_instruction == 55:  # 110111 -> A + 1
+                return "A+1"
+            elif alu_instruction == 14:  # 001110 -> D - 1
+                return "D-1"
+            elif alu_instruction == 50:  # 110010 -> A-1
+                return "A-1"
+            elif alu_instruction == 2:  # 000010 -> D+A
+                return "D+A"
+            elif alu_instruction == 19:  # 010011 -> D-A
+                return "D-A"
+            elif alu_instruction == 7:  # 000111 -> A-D
+                return "A-D"
+            elif alu_instruction == 0:  # 000000 -> D&A
+                return "D&A"
+            elif alu_instruction == 21:  # 010101 -> D|A
+                return "D|A"
+
+        else:  # a = 0
+            if alu_instruction == 42:  # 101010 -> 0
+                return "0"
+            elif alu_instruction == 63:  # 111111 -> 1
+                return "1"
+            elif alu_instruction == 58:  # 111010 -> -1
+                return "-1"
+            elif alu_instruction == 12:  # 001100 -> D
+                return  "D"
+            elif alu_instruction == 48:  # 110000 -> A
+                return "M"
+            elif alu_instruction == 13:  # 001101 -> !D
+                return "!D"
+            elif alu_instruction == 49:  # 110001 -> !A
+                return "!M"
+            elif alu_instruction == 15:  # 001111 -> -D
+                return "-D"
+            elif alu_instruction == 51:  # 110011 -> -A
+                return "-M"
+            elif alu_instruction == 31:  # 011111 -> D + 1
+                return "D+1"
+            elif alu_instruction == 55:  # 110111 -> A + 1
+                return "M+1"
+            elif alu_instruction == 14:  # 001110 -> D - 1
+                return "D-1"
+            elif alu_instruction == 50:  # 110010 -> A-1
+                return "M-1"
+            elif alu_instruction == 2:  # 000010 -> D+A
+                return "D+M"
+            elif alu_instruction == 19:  # 010011 -> D-A
+                return "D-M"
+            elif alu_instruction == 7:  # 000111 -> A-D
+                return "M-D"
+            elif alu_instruction == 0:  # 000000 -> D&A
+                return "D&M"
+            elif alu_instruction == 21:  # 010101 -> D|A
+                return "D|M"
+
+    def get_dest_type(self, instruction):
+        if(self.get_instruction_type(instruction) == "A"):
+            return "NA"
+        dest = np.bitwise_and(instruction, 0x0038)
+        dest = np.right_shift(dest, 3)
+
+        if dest == 0:
+            return "None"
+        elif dest == 1:  # M
+            return "M"
+        elif dest == 2:  # D
+            return "D"
+        elif dest == 3:  # MD
+            return "MD"
+        elif dest == 4:  # A
+            return "A"
+        elif dest == 5:  # AM
+            return "AM"
+        elif dest == 6:  # AD
+            return "AD"
+        elif dest == 7:  # AMD
+            return "AMD"
+
+    def get_jump_type(self, instruction):
+        if(self.get_instruction_type(instruction) == "A"):
+            return "NA"
+        jump = np.bitwise_and(instruction, 0x0007)
+        if jump == 0:  # null
+            return "null"
+        elif jump == 1:  # JGT
+            return "JGT"
+        elif jump == 2:  # JEQ
+            return "JEQ"
+        elif jump == 3:  # JGE
+            return "JGE"
+        elif jump == 4:  # JLT
+            return "JLT"
+        elif jump == 5:  # JNE
+            return "JNE"
+        elif jump == 6:  # JLE
+            return "JLE"
+        elif jump == 7:  # JMP
+            return "JMP"
+
+    def format_binary_instruction(self, instruction):
+        raw_bin = bin(instruction)[2:]
+        nb_bits = len(raw_bin)
+        nb_bits_to_add = 16 - nb_bits
+        padding = "0"*nb_bits_to_add
+        raw_bin = padding + raw_bin
+        bin_ = raw_bin[0:4] + " " + raw_bin[4:8] + " " + raw_bin[8:12] + " " + raw_bin[12:16]
+        return bin_
+
+    def format_hex_instruction(self, instruction):
+        raw_hex = hex(instruction)[2:]
+        nb_bits = len(raw_hex)
+        nb_bits_to_add = 4 - nb_bits
+        padding = "0"*nb_bits_to_add
+        hex_ = padding + raw_hex
+        return hex_
+
+    def get_assembler_string(self, instruction):
+        if self.get_instruction_type(instruction) == "A":
+            self.assembler_string = self.format_hex_instruction(instruction) + " -> A"
+        else:
+            hex_instruction = hex(instruction)[2:]
+            if hex_instruction == "fc10":
+                self.assembler_string = "M[A] -> D"
+            elif hex_instruction == "f090":
+                self.assembler_string = "M[A] + D -> D"
+            elif hex_instruction == "e308":
+                self.assembler_string = "D -> M[A]"
+
+            elif hex_instruction == "ec10":
+                self.assembler_string = "A -> D"
+            elif hex_instruction == "e302":
+                self.assembler_string = "D?0"
+            elif hex_instruction == "f088":
+                self.assembler_string = "M[A] + D -> M[A]"
+            elif hex_instruction == "fc88":
+                self.assembler_string = "M[A] - 1 -> M[A]"
+            elif hex_instruction == "e007":
+                self.assembler_string = "JUMP"
+            elif hex_instruction == "f007":
+                self.assembler_string = "JUMP"
+
+            #TODO dictionnary of useful instruction
+            pass
+
+        return self.assembler_string
 
     def print_state(self):
         print("instruction nb : %d\nA : \nD : \n out_ALU : \n idx_ROM : \n)")
 
     def save_state(self):
+        #TODO with shelves ?
         pass
 
     def load_state(self):
+        #TODO with shelves ?
         pass
