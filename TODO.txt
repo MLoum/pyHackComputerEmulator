@@ -1,7 +1,6 @@
-- Cliquer sur les lignes de la ROM affiche l'instruction et donne la possibilité de mettre la machine dans cet état.
-- Avoir surligner dans la ROM le numéro de l'état courant
-- Avoir un menu file open/export etc
-- Creer une horloge de tick automatique.
 - Affichage d'une image 16x16
-- Editer la mémoire. Inserer des nouvelles lignes.
-- Ne pas afficher la mémoire avec plein de zéro pour l'optimisation.
+- Affichage en virgule fixe avec reglage de la position de la virgule.
+- Enable diable Start et Stop
+
+Tests :
+- goto avec les boucles. Prevoir une eventuelle boucle infinie.

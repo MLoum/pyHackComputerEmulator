@@ -1,17 +1,18 @@
 import numpy as np
+from RAM import RAM
 import time
 
 
 class CPU:
-    def __init__(self, ROM, RAM, is_print_state=False, log_path="log.txt"):
+    def __init__(self, ROM, RAM, VRAM, is_print_state=False, log_path="log.txt"):
         self.ROM = ROM
         self.RAM = RAM
+        self.VRAM = VRAM
         self.A_reg = np.zeros(1, dtype='uint16')
         self.D_reg = np.zeros(1, dtype='uint16')
         self.out_ALU = np.zeros(1, dtype='uint16')
         self.is_print_state = is_print_state
         self.log_path = log_path
-        self.num_instruction = 0
         self.wait_time_ms = 0
         self.refresh_rate = 1000
 
@@ -30,6 +31,7 @@ class CPU:
         self.instruction_str = str(instruction)
         # A or C instruction ?
         is_c_instruction = np.bitwise_and(instruction, 0xE000)
+        is_V_instruction = np.bitwise_and(instruction, 0x8000)
 
         if is_c_instruction:
             self.instruction_type = "C"
@@ -39,7 +41,7 @@ class CPU:
             alu_instruction = np.bitwise_and(instruction, 0x0FC0)
             alu_instruction = np.right_shift(alu_instruction, 6)
             result_ALU = 0  # default value
-            if a:
+            if a == 0:
                 if alu_instruction == 42:        #101010 -> 0
                     self.alu_instruction = "0"
                     result_ALU = 0
@@ -150,31 +152,32 @@ class CPU:
                     self.alu_instruction = "D|M"
                     result_ALU = self.D_reg[0] | self.RAM.mem[self.A_reg[0]]
 
+            self.out_ALU[0] = result_ALU
             # 2) Destination
             dest = np.bitwise_and(instruction, 0x0038)
-            dest = np.right_shift(alu_instruction, 3)
+            dest = np.right_shift(dest, 3)
 
             if dest == 0:
                 pass
-            elif dest == 1:  # M
+            elif dest == 1:  # 001 M
                 self.dest_instruction = "M"
                 self.RAM.mem[self.A_reg[0]] = result_ALU
-            elif dest == 2:  # D
+            elif dest == 2:  #010 D
                 self.dest_instruction = "D"
                 self.D_reg[0] = result_ALU
-            elif dest == 3:  # MD
+            elif dest == 3:  #011 MD
                 self.dest_instruction = "MD"
                 self.RAM.mem[self.A_reg[0]] = self.D_reg[0] = result_ALU
-            elif dest == 4:  # A
+            elif dest == 4:  #100 A
                 self.dest_instruction = "A"
                 self.A_reg[0] = result_ALU
-            elif dest == 5:  # AM
+            elif dest == 5:  #101 AM
                 self.dest_instruction = "AM"
                 self.A_reg[0] = self.RAM.mem[self.A_reg[0]] = result_ALU
-            elif dest == 6:  # AD
+            elif dest == 6:  #110 AD
                 self.dest_instruction = "AD"
                 self.A_reg[0] = self.D_reg[0] = result_ALU
-            elif dest == 7:  # AMD
+            elif dest == 7:  #111 AMD
                 self.dest_instruction = "AMD"
                 self.A_reg[0] = self.RAM.mem[self.A_reg[0]] = self.D_reg[0] = result_ALU
 
@@ -216,7 +219,10 @@ class CPU:
                 self.ROM.idx = self.A_reg[0]
             else:
                 self.ROM.idx += 1
-
+        elif is_V_instruction:
+            self.instruction_type = "V"
+            address = np.bitwise_and(instruction, 0x000F)
+            self.set_VRAM(address)
         else:
             self.instruction_type = "A"
             # A instruction, write in A register
@@ -226,7 +232,7 @@ class CPU:
             self.assembler_string = hex(instruction)[2:] + " -> A"
 
 
-        if self.num_instruction % self.refresh_rate == 0:
+        if self.ROM.idx % self.refresh_rate == 0:
             # PPU display image
             pass
 
@@ -243,20 +249,27 @@ class CPU:
         :param n:
         :return:
         """
-        self.CPU.ROM.idx = 0
+        self.ROM.idx = 0
+        self.RAM.clear()
+        self.A_reg[0] = 0
+        self.D_reg[0] = 0
+        self.out_ALU[0] = 0
         #TODO test infinite loop et faire cela dans un thread séparé que l'on peut tuer.
         while self.ROM.idx != n:
-            self.CPU.tick()
+            self.tick()
+
 
 
     def get_instruction_type(self, instruction):
         if np.bitwise_and(instruction, 0xE000) :
             return 'C'
+        elif np.bitwise_and(instruction, 0x8000) :
+            return 'V'
         else:
             return 'A'
 
     def get_ALU_operation_type(self, instruction):
-        if(self.get_instruction_type(instruction) == "A"):
+        if self.get_instruction_type(instruction) == "A":
             return "NA"
         a = np.bitwise_and(instruction, 0x1000)
         alu_instruction = np.bitwise_and(instruction, 0x0FC0)
@@ -339,7 +352,7 @@ class CPU:
                 return "D|M"
 
     def get_dest_type(self, instruction):
-        if(self.get_instruction_type(instruction) == "A"):
+        if self.get_instruction_type(instruction) == "A":
             return "NA"
         dest = np.bitwise_and(instruction, 0x0038)
         dest = np.right_shift(dest, 3)
@@ -362,7 +375,7 @@ class CPU:
             return "AMD"
 
     def get_jump_type(self, instruction):
-        if(self.get_instruction_type(instruction) == "A"):
+        if self.get_instruction_type(instruction) == "A":
             return "NA"
         jump = np.bitwise_and(instruction, 0x0007)
         if jump == 0:  # null
@@ -399,6 +412,18 @@ class CPU:
         hex_ = padding + raw_hex
         return hex_
 
+    def set_VRAM(self, address):
+
+        # find 1 bit in register D
+        bits = []
+        for i, c in enumerate(bin(self.D_reg[0])[:1:-1], 1):
+            if c == '1':
+                bits.append(i)
+
+        for bit in bits:
+            self.VRAM.set_pixel(address, bit, 65536)
+
+
     def get_assembler_string(self, instruction):
         if self.get_instruction_type(instruction) == "A":
             self.assembler_string = self.format_hex_instruction(instruction) + " -> A"
@@ -423,6 +448,8 @@ class CPU:
                 self.assembler_string = "JUMP"
             elif hex_instruction == "f007":
                 self.assembler_string = "JUMP"
+            else:
+                self.assembler_string = ""
 
             #TODO dictionnary of useful instruction
             pass

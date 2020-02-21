@@ -8,10 +8,10 @@ class ROM:
     def __init__(self):
         self.mem = np.zeros(ROM.MEM_SIZE, dtype='uint16')
         self.idx = 0
-        self.mem[0] = 42
-        self.mem[1] = 208
-        self.mem[2] = 507
-        self.mem[3] = 16507
+        # self.mem[0] = 42
+        # self.mem[1] = 208
+        # self.mem[2] = 507
+        # self.mem[3] = 16507
         #FIXME
         self.idx_last_instruction = None
         self.find_idx_last_instruction()
@@ -31,14 +31,27 @@ class ROM:
             idx = 0
             for line in file:
                 if idx==0:
-                    if line != "v2.0 raw":
+                    if line != "v2.0 raw\n":
                         print("This is not a valid logisim image file since it does not start with v2.0 raw")
                         break
                     idx+= 1
                 else:
-                    self.mem[idx] = int(line, 16)
+                    self.mem[idx-1] = int(line, 16)
                     idx += 1
 
+        self.find_idx_last_instruction()
+
+    def insert_instruction(self, instruction, type_, mode, pos):
+        # Insert values along the given axis before the given indices.
+        if mode == "after":
+            pos += 1
+        if type_ == "hex":
+            instruction = int(instruction, 16)
+        elif type_ == "binary":
+            if len(instruction) == 19:
+                instruction = instruction[0:4] + instruction[5:10] + instruction[11:15] + instruction[16:20]
+
+        self.mem = np.insert(self.mem, pos, instruction)
         self.find_idx_last_instruction()
 
     def export_machine_code(self, file_path, type_="logisim"):
@@ -64,7 +77,10 @@ class ROM:
         # Find the last non zero instruction
         list_nonzero = np.nonzero(self.mem)
         # test = list_nonzero[0][-1]
-        self.idx_last_instruction = list_nonzero[0][-1]
+        if len(list_nonzero[0]) == 0:
+            self.idx_last_instruction = 0
+        else:
+            self.idx_last_instruction = list_nonzero[0][-1] + 1
         # self.idx_last_instruction = np.nonzero(self.mem)[-1]
 
     def get_instructions(self):
